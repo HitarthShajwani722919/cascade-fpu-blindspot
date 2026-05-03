@@ -85,7 +85,7 @@ grep -n "fflags\|fcsr" /cascade-meta/fuzzer/cascade/fuzzsim.py
 
 Output: nothing. `fuzzsim.py` has zero mentions of `fflags` or `fcsr`. The comparison loop only checks integer and FP value registers.
 
-Also in `spikeresolution.py`, Spike reads `fcsr` at line 120 but line 277 throws it away — only `finalintregvals` and `finalfpuregvals` are returned, never `fflags`.
+Also in `/cascade-meta/fuzzer/cascade/spikeresolution.py`, Spike reads `fcsr` at line 120 but line 277 throws it away — only `finalintregvals` and `finalfpuregvals` are returned, never `fflags`.
 
 ### Step 2 — Instruction telemetry: baseline vs enhanced
 
