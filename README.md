@@ -1,6 +1,6 @@
 # cascade-fpu-blindspot
 
-> Demonstrating structural gaps in [Cascade](https://comsec.ethz.ch/wp-content/files/cascade_sec24.pdf) (USENIX Security '24) — bugs where the RTL computes correct values but wrong IEEE 754 exception flags are completely invisible to the original oracle.
+> Demonstrating a structural FPU blind spot in [Cascade](https://comsec.ethz.ch/wp-content/files/cascade_sec24.pdf) (USENIX Security '24) — bugs where the RTL computes correct values but wrong IEEE 754 exception flags are completely invisible to the original oracle.
 
 ---
 
@@ -74,7 +74,114 @@ Added a call to `inject_fpu_edge_case_vals()` at the start of each basic block g
 
 ---
 
-## Proving the Blind Spot
+## Getting Started with Cascade
+
+Before applying our changes, it helps to get familiar with Cascade's original behavior — how it finds bugs, how it measures time-to-bug, and how its coverage compares to DifuzzRTL. The workflows below use stock Cascade scripts already inside the Docker image, no changes needed.
+
+### Rediscovering paper bugs with `do_fuzzdesign.py`
+
+```
+python3 do_fuzzdesign.py <design> <num_cores> <seed_offset> <authorize_privileges> <tolerate_some_bug>
+```
+
+- `design` — one of the designs from `design_repos.json` (e.g. `cva6`, `cva6-c1`, `picorv32`, `vexriscv-v1-7`)
+- `num_cores` — parallel workers. Use however many your machine has
+- `seed_offset` — start seeds from this offset. Use `0` to start from the beginning
+- `authorize_privileges` — `1` to allow privileged instructions (default), `0` to disable
+- `tolerate_some_bug` — `0` normally. Set to `1` only when you want to fuzz past a known bug to find others
+
+To rediscover the CVA6 C1 bug from the paper (register mismatch in `f2`):
+
+```bash
+source /cascade-meta/env.sh
+cd /cascade-meta/fuzzer
+python3 do_fuzzdesign.py cva6-c1 16 0 0 0
+```
+
+You should see output like:
+
+```
+/cascade-cva6-c1/cascade
+Starting parallel testing of `cva6-c1` on 16 processes.
+Failed test_run_rtl_single for params memsize: `396719`, design_name: `cva6-c1`, check_pc_spike_again: `True`, randseed: `3`, nmax_bbs: `55`
+Register mismatch (f2) for params: memsize: `396719`, design_name: `cva6-c1`, nmax_bbs: `55`, randseed: `3`. Expected `0xffffffff7fc00000`, got `0xffffffff00000000`.
+```
+
+The fuzzer runs indefinitely — `Ctrl+C` to stop. Mismatches and timeouts are printed as they're found. Each failure line gives you the exact `randseed` and `nmax_bbs` to reproduce it with `do_fuzzsingle.py`.
+
+Other designs worth trying to see different bug classes:
+
+```bash
+python3 do_fuzzdesign.py picorv32 16 0 0 0       # P-series bugs
+python3 do_fuzzdesign.py vexriscv-v1-7 16 0 0 0  # V-series bugs
+python3 do_fuzzdesign.py boom-b1 16 0 0 0         # B1 bug
+```
+
+---
+
+### Reproducing Figure 18 (bug detection timings) with `do_timetobug_boxes.py`
+
+This measures how long Cascade takes to detect each of the 40 bugs in the paper, repeated `NUM_REPS` times per bug. It saves per-bug JSON files to `/tmp/`, then the plot script reads them all and generates the figure.
+
+```
+python3 do_timetobug_boxes.py <num_cores> <num_reps>
+python3 do_timetobug_boxes_plot.py <num_cores> <num_reps>
+```
+
+- `num_cores` — parallel workers, same as above
+- `num_reps` — how many times to repeat each bug measurement. Paper uses `10`. Lower values finish faster but are noisier
+
+To reproduce Figure 18 quickly (lower quality, finishes in minutes):
+
+```bash
+source /cascade-meta/env.sh
+cd /cascade-meta/fuzzer
+python3 do_timetobug_boxes.py 16 5
+python3 do_timetobug_boxes_plot.py 16 5
+```
+
+For paper-quality results (needs a 64-core machine, takes hours):
+
+```bash
+python3 do_timetobug_boxes.py 64 10
+python3 do_timetobug_boxes_plot.py 64 10
+```
+
+The `num_cores` and `num_reps` arguments **must match** between the two scripts — the plot script uses them to find the right JSON files in `/tmp/`.
+
+`do_timetobug_boxes.py` iterates over all 40 bugs (`p1`–`p6`, `v1`–`v14`, `k1`–`k5`, `c1`–`c10`, `b1`–`b2`, `r1`, `y1`), temporarily tolerating each other bug while measuring time-to-detect for the target one. Each result is saved to `/tmp/bug_timings_<bug>_<num_cores>_<num_reps>.json`. Once all JSON files exist, `do_timetobug_boxes_plot.py` reads them and writes the figure.
+
+---
+
+### Understanding Coverage: Cascade vs DifuzzRTL (Figure 13)
+
+This reproduces the register coverage comparison between Cascade and DifuzzRTL on RocketTile. It reads pre-captured log files already inside the Docker image so it completes in seconds.
+
+```bash
+source /cascade-meta/env.sh
+cd /cascade-meta/fuzzer
+python3 do_collect_difuzz_coverage.py
+```
+
+Expected output:
+
+```
+Time DifuzzRTL: [47.99]
+Time Cascade (with corpus) for getting the same coverage: [0.26]
+Time Cascade (live generation) for getting the same coverage: [0.49]
+Speedup of Cascade (with corpus) over DifuzzRTL: 186.47x
+Speedup of Cascade (live generation) over DifuzzRTL: 97.15x
+```
+
+To reach the same register coverage that DifuzzRTL achieves in ~48 seconds of fuzzing time, Cascade needs only **0.26s using its corpus** or **0.49s generating live**. This maps to Figure 13 in the paper — Cascade reaches 1,083,541 coverage points in 4,520 iterations while DifuzzRTL plateaus at 162,595.
+
+The figure is saved inside the container at `/cascade-meta/figures/difuzzrtl_coverage.png`. To extract it:
+
+```bash
+docker cp <container_id>:/cascade-meta/figures/difuzzrtl_coverage.png .
+```
+
+---
 
 ### Step 1 — Structural proof: Cascade never checks fflags
 
@@ -85,7 +192,7 @@ grep -n "fflags\|fcsr" /cascade-meta/fuzzer/cascade/fuzzsim.py
 
 Output: nothing. `fuzzsim.py` has zero mentions of `fflags` or `fcsr`. The comparison loop only checks integer and FP value registers.
 
-Also in `/cascade-meta/fuzzer/cascade/spikeresolution.py`, Spike reads `fcsr` at line 120 but line 277 throws it away — only `finalintregvals` and `finalfpuregvals` are returned, never `fflags`.
+Also in `spikeresolution.py`, Spike reads `fcsr` at line 120 but line 277 throws it away — only `finalintregvals` and `finalfpuregvals` are returned, never `fflags`.
 
 ### Step 2 — Instruction telemetry: baseline vs enhanced
 
