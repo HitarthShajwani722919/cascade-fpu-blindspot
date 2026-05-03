@@ -1,6 +1,6 @@
 # cascade-fpu-blindspot
 
-> Demonstrating a structural FPU blind spot in [Cascade](https://comsec.ethz.ch/wp-content/files/cascade_sec24.pdf) (USENIX Security '24) — bugs where the RTL computes correct values but wrong IEEE 754 exception flags are completely invisible to the original oracle.
+> Demonstrating structural gaps in [Cascade](https://comsec.ethz.ch/wp-content/files/cascade_sec24.pdf) (USENIX Security '24) — bugs where the RTL computes correct values but wrong IEEE 754 exception flags are completely invisible to the original oracle.
 
 ---
 
