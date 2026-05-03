@@ -1,6 +1,6 @@
 # cascade-fpu-blindspot
 
-> Demonstrating a structural FPU blind spot in [Cascade](https://comsec.ethz.ch/wp-content/files/cascade_sec24.pdf) (USENIX Security '24) — bugs where the RTL computes correct values but wrong IEEE 754 exception flags are completely invisible to the original oracle.
+> Demonstrating structural gaps in [Cascade](https://comsec.ethz.ch/wp-content/files/cascade_sec24.pdf) (USENIX Security '24) — bugs where the RTL computes correct values but wrong IEEE 754 exception flags are completely invisible to the original oracle.
 
 ---
 
@@ -10,7 +10,7 @@
 
 This project identifies and demonstrates two structural gaps in Cascade's FPU testing:
 
-1. **No special value injection** — FP registers are loaded from random memory bytes. The probability of accidentally generating a NaN (`0x7FC00000`) is ~1 in 2²³. Edge-case FPU paths are almost never exercised.
+1. **No special value injection** — FP registers are loaded from random memory bytes. The probability of accidentally generating a NaN (`0x7FC00000`) is extremely rare. Edge-case FPU paths are almost never exercised.
 2. **No fflags comparison** — The `fflags` CSR (IEEE 754 exception flags: NV, DZ, OF, UF, NX) is read by Spike but thrown away. The RTL comparison in `fuzzsim.py` has zero mentions of `fflags`. An entire class of FPU correctness bugs is structurally invisible.
 
 ---
