@@ -276,6 +276,10 @@ Cascade's differential oracle compares register values. It cannot see bugs where
 | NaN/special values as inputs | ✗ ~1 in 8M chance | ✓ injected directly |
 
 ---
+## DEMO
+```
+Here's a small demo of how to use this repository: https://www.youtube.com/watch?v=Xo9c1q3dDc0
+```
 
 ## Files in This Repo
 
